@@ -1694,10 +1694,8 @@ namespace SulfurMP.Level
 
         private static long PreRollSeed()
         {
-            // TODO: REMOVE — Forced test seed for Bug 2 skeleton desync verification
-            return 387426812L;
-            // var rng = new System.Random();
-            // return (long)rng.Next(int.MinValue, int.MaxValue);
+            var rng = new System.Random();
+            return (long)rng.Next(int.MinValue, int.MaxValue);
         }
 
         private void SendSceneReady()
