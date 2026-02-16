@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Path to your SULFUR game installation -->
+    <SulfurDir>C:\Steam\steamapps\common\SULFUR</SulfurDir>
+  </PropertyGroup>
+</Project>
