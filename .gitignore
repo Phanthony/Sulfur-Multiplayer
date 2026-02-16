@@ -1,0 +1,18 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.dll
+*.pdb
+
+# Local game paths (use GamePath.props.example as template)
+GamePath.props
+
+# Claude
+.claude/
+CLAUDE.md
+
+# Local working dirs
+decompiled/
+tasks/
