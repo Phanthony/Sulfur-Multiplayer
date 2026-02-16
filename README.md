@@ -1,3 +1,8 @@
+<div align="center">
+<img width="675" height="520" alt="mp_photo_1" src="https://github.com/user-attachments/assets/1d44a974-344f-464c-a0e8-49107a1abf0d" />
+<img width="1838" height="778" alt="mp_photo_2" src="https://github.com/user-attachments/assets/cea7a26c-0293-46f4-a761-3e354f2f7dfa" />
+</div>
+
 # SulfurMP Setup Guide
 
 ## Prerequisites
