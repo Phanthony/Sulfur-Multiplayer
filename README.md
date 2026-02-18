@@ -6,7 +6,13 @@
 
 # SulfurMP Setup Guide
 
-## Installation
+## BepInEx 5 Installation
+
+1. Download **BepInEx 5.x (x64)** from [GitHub releases](https://github.com/BepInEx/BepInEx/releases)
+2. Extract into the SULFUR game directory — creates `BepInEx/`, `winhttp.dll`, `doorstop_config.ini`
+3. Run the game once to let BepInEx generate its folder structure
+
+## Mod Installation
 
 1. Download the latest release from [GitHub Releases](https://github.com/Phanthony/Sulfur-Multiplayer/releases/)
 2. Extract the zip and drag the `BepInEx` folder into your SULFUR game directory
