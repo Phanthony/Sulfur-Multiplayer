@@ -698,16 +698,7 @@ namespace SulfurMP.Level
 
         private static void SaveStashDataInterceptor(orig_SaveStashData orig, object self, string stashIdentifier)
         {
-            var net = NetworkManager.Instance;
-            if (net != null && net.IsConnected && !net.IsHost)
-            {
-                Plugin.Log.LogInfo("LevelSync [Client]: Skipping SaveStashData (multiplayer client)");
-                return;
-            }
-
-            // Host or single-player — call original with broad exception catch.
-            // SwitchLevelRoutine calls SaveStashData unconditionally; if player is dead
-            // (PlayerObject destroyed), this can NRE and silently kill the coroutine.
+            
             try
             {
                 orig(self, stashIdentifier);
@@ -720,13 +711,7 @@ namespace SulfurMP.Level
 
         private static void SaveInventoryDataInterceptor(orig_SaveInventoryData orig, object self)
         {
-            var net = NetworkManager.Instance;
-            if (net != null && net.IsConnected && !net.IsHost)
-            {
-                Plugin.Log.LogInfo("LevelSync [Client]: Skipping SaveInventoryData (multiplayer client)");
-                return;
-            }
-
+            
             try
             {
                 orig(self);
@@ -739,13 +724,7 @@ namespace SulfurMP.Level
 
         private static void SaveBackupInterceptor(orig_SaveBackup orig, object self)
         {
-            var net = NetworkManager.Instance;
-            if (net != null && net.IsConnected && !net.IsHost)
-            {
-                Plugin.Log.LogInfo("LevelSync [Client]: Skipping SaveBackup (multiplayer client)");
-                return;
-            }
-
+            
             try
             {
                 orig(self);
@@ -758,13 +737,7 @@ namespace SulfurMP.Level
 
         private static void SaveCheckpointsInterceptor(orig_SaveCheckpoints orig, bool flushToDiskOnConsole)
         {
-            var net = NetworkManager.Instance;
-            if (net != null && net.IsConnected && !net.IsHost)
-            {
-                Plugin.Log.LogInfo("LevelSync [Client]: Skipping SaveCheckpoints (multiplayer client)");
-                return;
-            }
-
+            // All players save — client progress (level completions, recipes) persists.
             try
             {
                 orig(flushToDiskOnConsole);
@@ -777,17 +750,7 @@ namespace SulfurMP.Level
 
         private static void LoadStashDataInterceptor(orig_LoadStashData orig, object self, string stashIdentifier)
         {
-            var net = NetworkManager.Instance;
-            if (net != null && net.IsConnected && !net.IsHost)
-            {
-                Plugin.Log.LogInfo("LevelSync [Client]: Skipping LoadStashData (multiplayer client)");
-                return;
-            }
-
-            // Host or single-player — call original with broad exception catch.
-            // SpawnPlayerNode calls PlayerStash.DoSetup → LoadStashData during level generation.
-            // IOException from dual-instance file contention kills the coroutine,
-            // causing the loading screen to get stuck permanently.
+            
             try
             {
                 orig(self, stashIdentifier);
