@@ -66,6 +66,10 @@ namespace SulfurMP.Entities
             public float Timestamp;
         }
 
+        // Dead entity IDs — client-side guard to prevent position sync from
+        // overriding death animations (handles in-flight batches)
+        private readonly HashSet<ushort> _deadEntityIds = new HashSet<ushort>();
+
         // Force-spawn support — host spawns NPC on behalf of client notification
         private static bool _isForceSpawning;
         // Client force-spawn — suppresses ClientNpcSpawnNotify in SpawnUnitInterceptor
@@ -431,8 +435,12 @@ namespace SulfurMP.Entities
             // Client: unfreeze Rigidbody so death animation ragdoll works,
             // then destroy NpcMotionSmoother so its LateUpdate position lerp
             // doesn't fight the death animation + gravity.
+            // Also track entity as dead so in-flight position batches are ignored.
             if (!net.IsHost)
             {
+                if (entityId.IsValid && instance != null)
+                    instance._deadEntityIds.Add(entityId.Value);
+
                 var dieGo = GetGameObject(self);
                 if (dieGo != null)
                 {
@@ -527,6 +535,11 @@ namespace SulfurMP.Entities
                 if (npcObj == null) continue;
                 var go = GetGameObject(npcObj);
                 if (go == null) continue;
+
+                // Skip dead NPCs — they linger in aliveNpcs briefly after Die()
+                // and syncing their animator state breaks the death animation on clients
+                if (GetUnitState(npcObj) == 0) // UnitState.Dead = 0
+                    continue;
 
                 if (!Registry.TryGetId(go, out var entityId))
                 {
@@ -665,6 +678,11 @@ namespace SulfurMP.Entities
                 var entityId = new NetworkEntityId(e.EntityId);
 
                 if (!Registry.TryGetEntity(entityId, out var go) || go == null)
+                    continue;
+
+                // Skip dead entities — death animation is playing natively,
+                // don't let stale position data re-create NpcMotionSmoother
+                if (_deadEntityIds.Contains(e.EntityId))
                     continue;
 
                 // Activate inactive NPCs — host is sending positions, so they should be visible
@@ -904,6 +922,7 @@ namespace SulfurMP.Entities
 
             // Clear registry before batch (new level or late-join resync)
             Registry.Clear();
+            _deadEntityIds.Clear();
             _unmatchedEntries = null;
 
             // Track already-matched GameObjects to avoid double-matching same-type NPCs
@@ -1469,6 +1488,7 @@ namespace SulfurMP.Entities
             Plugin.Log.LogInfo($"EntitySync: Disconnected ({reason}), clearing registry");
             Registry.Clear();
             _npcSyncStates.Clear();
+            _deadEntityIds.Clear();
             _batchPending = false;
             _unmatchedEntries = null;
             _usedInBatch = null;
@@ -1496,6 +1516,7 @@ namespace SulfurMP.Entities
             Plugin.Log.LogInfo("EntitySync: Level load starting, clearing registry");
             Registry.Clear();
             _npcSyncStates.Clear();
+            _deadEntityIds.Clear();
             _batchPending = true;
 
             // Cancel any previous batch coroutine
