@@ -22,6 +22,7 @@ namespace SulfurMP.Networking
         private const string KEY_HOST_NAME = "sulfurmp_host";
         private const string KEY_PLAYER_COUNT = "sulfurmp_players";
         private const string KEY_LOBBY_PASSWORD = "sulfurmp_password";
+        private const string KEY_PING_LOCATION = "sulfurmp_pingloc";
 
         /// <summary>Host-side: password for the current lobby. Empty = no password.</summary>
         public string LobbyPassword { get; set; } = "";
@@ -81,6 +82,9 @@ namespace SulfurMP.Networking
                 _lobbyListResult = CallResult<LobbyMatchList_t>.Create(OnLobbyListReceived);
                 _lobbyChatUpdate = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
                 _lobbyJoinRequested = Callback<GameLobbyJoinRequested_t>.Create(OnGameLobbyJoinRequested);
+                // Start background pings to Steam relay servers for ping estimation
+                SteamNetworkingUtils.InitRelayNetworkAccess();
+
                 _steamReady = true;
                 Plugin.Log.LogInfo("LobbyManager initialized.");
             }
@@ -184,6 +188,23 @@ namespace SulfurMP.Networking
         /// </summary>
         public LobbyInfo GetLobbyInfo(CSteamID lobbyId)
         {
+            // Estimate ping from lobby metadata
+            int estimatedPing = -1;
+            string pingLocStr = SteamMatchmaking.GetLobbyData(lobbyId, KEY_PING_LOCATION);
+            if (!string.IsNullOrEmpty(pingLocStr))
+            {
+                SteamNetworkPingLocation_t remoteLoc;
+                if (SteamNetworkingUtils.ParsePingLocationString(pingLocStr, out remoteLoc))
+                {
+                    SteamNetworkPingLocation_t localLoc;
+                    if (SteamNetworkingUtils.GetLocalPingLocation(out localLoc) >= 0f)
+                    {
+                        estimatedPing = SteamNetworkingUtils.EstimatePingTimeBetweenTwoLocations(
+                            ref localLoc, ref remoteLoc);
+                    }
+                }
+            }
+
             return new LobbyInfo
             {
                 LobbyId = lobbyId,
@@ -192,6 +213,7 @@ namespace SulfurMP.Networking
                 PlayerCount = SteamMatchmaking.GetNumLobbyMembers(lobbyId),
                 MaxPlayers = SteamMatchmaking.GetLobbyMemberLimit(lobbyId),
                 HasPassword = SteamMatchmaking.GetLobbyData(lobbyId, KEY_LOBBY_PASSWORD) == "1",
+                EstimatedPingMs = estimatedPing,
             };
         }
 
@@ -217,6 +239,16 @@ namespace SulfurMP.Networking
 
             if (!string.IsNullOrEmpty(LobbyPassword))
                 SteamMatchmaking.SetLobbyData(CurrentLobbyId, KEY_LOBBY_PASSWORD, "1");
+
+            // Store ping location for pre-join estimation
+            SteamNetworkPingLocation_t pingLoc;
+            float age = SteamNetworkingUtils.GetLocalPingLocation(out pingLoc);
+            if (age >= 0f)
+            {
+                string pingStr;
+                SteamNetworkingUtils.ConvertPingLocationToString(ref pingLoc, out pingStr, 1024);
+                SteamMatchmaking.SetLobbyData(CurrentLobbyId, KEY_PING_LOCATION, pingStr);
+            }
 
             // Start hosting
             NetworkManager.Instance?.StartHost();
@@ -320,5 +352,7 @@ namespace SulfurMP.Networking
         public int PlayerCount;
         public int MaxPlayers;
         public bool HasPassword;
+        /// <summary>Estimated ping in ms via Steam relay network. -1 = unavailable.</summary>
+        public int EstimatedPingMs;
     }
 }

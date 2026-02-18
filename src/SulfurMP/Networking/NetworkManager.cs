@@ -60,6 +60,12 @@ namespace SulfurMP.Networking
         private int _msgSentCount, _msgRecvCount, _bytesSent, _bytesRecv;
         private float _statsTimer;
 
+        // Ping / RTT measurement
+        private float _pingTimer;
+        private const float PingInterval = 2f;
+        private readonly Dictionary<CSteamID, int> _peerRTT = new Dictionary<CSteamID, int>();
+        public int PingMs { get; private set; }
+
         // Heartbeat
         private float _heartbeatTimer;
         private const float HeartbeatInterval = 5f;
@@ -129,6 +135,7 @@ namespace SulfurMP.Networking
             UpdateHeartbeat();
             CheckHeartbeatTimeouts();
             UpdateStatistics();
+            UpdatePing();
         }
 
         #region Host
@@ -504,6 +511,9 @@ namespace SulfurMP.Networking
                 case MessageType.Ping:
                     HandlePing(sender, (Messages.PingMessage)message);
                     break;
+                case MessageType.Pong:
+                    HandlePong(sender, (Messages.PongMessage)message);
+                    break;
             }
         }
 
@@ -574,6 +584,13 @@ namespace SulfurMP.Networking
         {
             var pong = new Messages.PongMessage { OriginalTimestamp = msg.Timestamp };
             SendMessage(sender, pong);
+        }
+
+        private void HandlePong(CSteamID sender, Messages.PongMessage msg)
+        {
+            int rtt = Mathf.RoundToInt((Time.unscaledTime - msg.OriginalTimestamp) * 1000f);
+            if (rtt < 0) rtt = 0;
+            _peerRTT[sender] = rtt;
         }
 
         private void SendHandshake()
@@ -664,6 +681,29 @@ namespace SulfurMP.Networking
             }
         }
 
+        private void UpdatePing()
+        {
+            _pingTimer += Time.unscaledDeltaTime;
+            if (_pingTimer >= PingInterval)
+            {
+                _pingTimer = 0f;
+                var ping = new Messages.PingMessage { Timestamp = Time.unscaledTime };
+                SendToAll(ping);
+            }
+
+            if (_peerRTT.Count > 0)
+            {
+                int max = 0;
+                foreach (var kvp in _peerRTT)
+                    if (kvp.Value > max) max = kvp.Value;
+                PingMs = max;
+            }
+            else
+            {
+                PingMs = 0;
+            }
+        }
+
         #endregion
 
         #region Shutdown
@@ -717,6 +757,9 @@ namespace SulfurMP.Networking
             _connectionToPeer.Clear();
             _handshakeCompleted.Clear();
             _lastHeartbeatReceived.Clear();
+            _peerRTT.Clear();
+            PingMs = 0;
+            _pingTimer = 0f;
 
             IsHost = false;
             State = ConnectionState.Disconnected;

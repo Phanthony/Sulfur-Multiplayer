@@ -124,19 +124,6 @@ namespace SulfurMP.UI
         {
             if (!_isVisible) return;
 
-            // Escape key closes the panel
-            if (UnityEngine.InputSystem.Keyboard.current != null &&
-                UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
-            {
-                // Don't close if password dialog is open — close that instead
-                if (_passwordDialog != null && _passwordDialog.activeSelf)
-                {
-                    HidePasswordDialog();
-                    return;
-                }
-                Hide();
-            }
-
             // Fade status message
             if (_statusTimer > 0)
             {
@@ -183,6 +170,25 @@ namespace SulfurMP.UI
                 _pauseMenuGO.SetActive(true);
                 _pauseMenuGO = null;
             }
+        }
+
+        /// <summary>
+        /// Called by PauseMenuHook.ResumeGameHook when ESC is pressed while the panel is open.
+        /// Closes the password dialog if open, otherwise closes the panel entirely.
+        /// </summary>
+        public void HandleEscapeFromGame()
+        {
+            if (!_isVisible) return;
+
+            // Password dialog open → close just the dialog
+            if (_passwordDialog != null && _passwordDialog.activeSelf)
+            {
+                HidePasswordDialog();
+                return;
+            }
+
+            // Close multiplayer panel → re-enables pause menu via Hide()
+            Hide();
         }
 
         #endregion
@@ -604,8 +610,9 @@ namespace SulfurMP.UI
             {
                 string role = nm.IsHost ? "Host" : "Client";
                 int memberCount = lm.InLobby ? SteamMatchmaking.GetNumLobbyMembers(lm.CurrentLobbyId) : 0;
+                string pingStr = nm.PingMs > 0 ? $"  |  Ping: {nm.PingMs}ms" : "";
                 string lobbyInfo = lm.InLobby ? $"\nLobby: {lm.CurrentLobbyId}" : "";
-                _connectionStatusText.text = $"Role: {role}  |  Players: {memberCount}{lobbyInfo}";
+                _connectionStatusText.text = $"Role: {role}  |  Players: {memberCount}{pingStr}{lobbyInfo}";
             }
 
             // Rebuild player list from lobby membership
@@ -715,9 +722,10 @@ namespace SulfurMP.UI
                 $"{info.PlayerCount}/{info.MaxPlayers}", 14f, TextAlignmentOptions.Center, countColor);
             UIBuilder.SetPreferredWidth(countText.gameObject, 70);
 
-            // Ping — placeholder (no pre-join ping API for Steam P2P)
+            // Ping — estimated via Steam relay network
+            string pingDisplay = info.EstimatedPingMs >= 0 ? $"{info.EstimatedPingMs}ms" : "\u2014";
             var pingText = UIBuilder.CreateText(entryGo.transform, "Ping",
-                "\u2014", 14f, TextAlignmentOptions.Center, UITheme.TextSecondary);
+                pingDisplay, 14f, TextAlignmentOptions.Center, UITheme.TextSecondary);
             UIBuilder.SetPreferredWidth(pingText.gameObject, 60);
 
             // Join button — SulfurYellow bg with dark text
