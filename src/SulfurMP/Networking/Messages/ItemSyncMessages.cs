@@ -265,6 +265,17 @@ namespace SulfurMP.Networking.Messages
     }
 
     /// <summary>
+    /// Client→host: request to loot the church collection box.
+    /// No payload needed — there's only one collection box per church level.
+    /// </summary>
+    public class ChurchCollectionLootMessage : NetworkMessage
+    {
+        public override MessageType Type => MessageType.ChurchCollectionLoot;
+        public override void Serialize(BinaryWriter writer) { }
+        public override void Deserialize(BinaryReader reader) { }
+    }
+
+    /// <summary>
     /// Host→all: "Everyone gets this coin's value." Used for shared gold.
     /// Fields: itemId(2)
     /// </summary>

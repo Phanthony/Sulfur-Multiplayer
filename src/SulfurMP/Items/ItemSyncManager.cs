@@ -33,6 +33,7 @@ namespace SulfurMP.Items
         private Hook _spawnPickupHook;
         private Hook _executePickupHook;
         private Hook _containerOnInteractHook;
+        private Hook _churchCollectionLootHook;
         private bool _hookAttempted;
         private int _hookRetryCount;
         private const int MaxHookRetries = 60;
@@ -75,6 +76,8 @@ namespace SulfurMP.Items
         private static Type _itemAttrCollDataType;   // ItemAttributeCollectionData
         private static Type _itemAttrDataType;       // ItemAttributeData
         private static Type _itemAttributesEnumType; // ItemAttributes enum (for Enum.ToObject)
+        private static Type _churchCollectionLootableType;
+        private static Type _lootableObjectType;
 
         // Singleton instance props (FlattenHierarchy for StaticInstance<T>)
         private static PropertyInfo _imInstanceProp;
@@ -86,6 +89,11 @@ namespace SulfurMP.Items
         private static MethodInfo _spawnPickupMethod;
         private static MethodInfo _executePickupMethod;
         private static MethodInfo _containerOnInteractMethod;
+        private static MethodInfo _churchLootMethod;       // ChurchCollectionLootable.Loot() (protected override)
+
+        // Methods — church collection
+        private static MethodInfo _lootableTriggerMethod;  // LootableObject.Trigger() (public)
+        private static FieldInfo _lootHasBeenSpawnedField; // LootableObject.lootHasBeenSpawned (private)
 
         // Methods — called via reflection
         private static MethodInfo _removePickupMethod;
@@ -156,6 +164,10 @@ namespace SulfurMP.Items
         // Container.OnInteract: public virtual instance, returns bool, 1 param
         private delegate bool orig_ContainerOnInteract(object self, object player);
         private delegate bool hook_ContainerOnInteract(orig_ContainerOnInteract orig, object self, object player);
+
+        // ChurchCollectionLootable.Loot(): protected override void, no params
+        private delegate void orig_ChurchLoot(object self);
+        private delegate void hook_ChurchLoot(orig_ChurchLoot orig, object self);
 
         #endregion
 
@@ -251,6 +263,8 @@ namespace SulfurMP.Items
                         else if (fn == "PerfectRandom.Sulfur.Core.Stats.ItemAttributeCollectionData") _itemAttrCollDataType = type;
                         else if (fn == "PerfectRandom.Sulfur.Core.Stats.ItemAttributeData") _itemAttrDataType = type;
                         else if (fn == "PerfectRandom.Sulfur.Core.Stats.ItemAttributes") _itemAttributesEnumType = type;
+                        else if (fn == "PerfectRandom.Sulfur.Gameplay.ChurchCollectionLootable") _churchCollectionLootableType = type;
+                        else if (fn == "PerfectRandom.Sulfur.Gameplay.LootableObject") _lootableObjectType = type;
                     }
                 }
                 catch (ReflectionTypeLoadException) { }
@@ -321,6 +335,15 @@ namespace SulfurMP.Items
                 BindingFlags.NonPublic | BindingFlags.Instance);
             _containerOnInteractMethod = _containerType?.GetMethod("OnInteract",
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+
+            // Church collection hook targets
+            _churchLootMethod = _churchCollectionLootableType?.GetMethod("Loot",
+                BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            _lootableTriggerMethod = _lootableObjectType?.GetMethod("Trigger",
+                BindingFlags.Public | BindingFlags.Instance);
+            // lootHasBeenSpawned is private on base LootableObject — must get from base type
+            _lootHasBeenSpawnedField = _lootableObjectType?.GetField("lootHasBeenSpawned",
+                BindingFlags.NonPublic | BindingFlags.Instance);
 
             // Callable methods
             _removePickupMethod = _interactionManagerType?.GetMethod("RemovePickup",
@@ -531,6 +554,21 @@ namespace SulfurMP.Items
                     Plugin.Log.LogError($"ItemSync: Failed to hook Container.OnInteract: {ex}");
                 }
             }
+
+            if (_churchLootMethod != null)
+            {
+                try
+                {
+                    _churchCollectionLootHook = new Hook(
+                        _churchLootMethod,
+                        new hook_ChurchLoot(ChurchCollectionLootInterceptor));
+                    Plugin.Log.LogInfo("ItemSync: Hooked ChurchCollectionLootable.Loot");
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"ItemSync: Failed to hook ChurchCollectionLootable.Loot: {ex}");
+                }
+            }
         }
 
         private void DisposeHooks()
@@ -541,6 +579,8 @@ namespace SulfurMP.Items
             _executePickupHook = null;
             _containerOnInteractHook?.Dispose();
             _containerOnInteractHook = null;
+            _churchCollectionLootHook?.Dispose();
+            _churchCollectionLootHook = null;
             _hookAttempted = false;
         }
 
@@ -778,6 +818,31 @@ namespace SulfurMP.Items
 
         #endregion
 
+        #region ChurchCollectionLootable.Loot Hook
+
+        private static void ChurchCollectionLootInterceptor(orig_ChurchLoot orig, object self)
+        {
+            var net = NetworkManager.Instance;
+            if (net == null || !net.IsConnected)
+            {
+                orig(self); // single-player: normal behavior
+                return;
+            }
+
+            if (net.IsHost)
+            {
+                orig(self); // host: normal flow (SpawnPickup hook broadcasts items)
+                return;
+            }
+
+            // Client: suppress item spawning (client has no stash data anyway).
+            // The opening animation was already started by Trigger() → "Loot" animator trigger.
+            // Send request to host to process using host's stash data.
+            net.SendToAll(new ChurchCollectionLootMessage());
+        }
+
+        #endregion
+
         #region Message Routing
 
         private void OnMessageReceived(CSteamID sender, NetworkMessage msg)
@@ -807,6 +872,10 @@ namespace SulfurMP.Items
                     break;
                 case MessageType.SharedGold:
                     HandleSharedGold((SharedGoldMessage)msg);
+                    break;
+                case MessageType.ChurchCollectionLoot:
+                    if (NetworkManager.Instance?.IsHost == true)
+                        HandleChurchCollectionLootRequest(sender);
                     break;
             }
         }
@@ -1066,6 +1135,40 @@ namespace SulfurMP.Items
             if (itemDef == null) return;
 
             ConsumeItemOnLocalPlayer(itemDef);
+        }
+
+        /// <summary>
+        /// Host: a client wants to loot the church collection box.
+        /// Find it in the scene, guard against double-loot, and call Trigger().
+        /// Trigger() → animation → Loot() → SpawnPickup → existing broadcast.
+        /// </summary>
+        private void HandleChurchCollectionLootRequest(CSteamID sender)
+        {
+            if (_churchCollectionLootableType == null || _lootableTriggerMethod == null) return;
+
+            // Find the ChurchCollectionLootable in the scene (only one per church level)
+            var collectionBox = UnityEngine.Object.FindObjectOfType(_churchCollectionLootableType);
+            if (collectionBox == null) return;
+
+            // Guard against double-loot via lootHasBeenSpawned on base LootableObject
+            if (_lootHasBeenSpawnedField != null)
+            {
+                bool alreadyLooted = (bool)_lootHasBeenSpawnedField.GetValue(collectionBox);
+                if (alreadyLooted) return;
+                // Set it now to prevent concurrent requests
+                _lootHasBeenSpawnedField.SetValue(collectionBox, true);
+            }
+
+            // Call Trigger() which plays sound + animation → eventually calls Loot() →
+            // our hook sees IsHost=true → calls orig → LootSpawnRoutine → SpawnPickup broadcasts
+            try
+            {
+                _lootableTriggerMethod.Invoke(collectionBox, null);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"ItemSync: ChurchCollectionLootable.Trigger() failed: {ex}");
+            }
         }
 
         #endregion

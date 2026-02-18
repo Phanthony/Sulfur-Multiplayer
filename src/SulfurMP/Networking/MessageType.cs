@@ -40,6 +40,7 @@ namespace SulfurMP.Networking
         ContainerLooted = 68,   // ContainerLooted (host→all)
         ItemDrop = 69,          // ItemDrop (client→host)
         SharedGold = 70,        // SharedGold (host→all)
+        ChurchCollectionLoot = 71, // Client→host: loot the church collection box
 
         // Entities (80-95)
         EntitySpawn = 80,
