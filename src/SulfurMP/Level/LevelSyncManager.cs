@@ -101,6 +101,10 @@ namespace SulfurMP.Level
 
         private static bool _reflectionInit;
 
+        // LootManager reflection cache (for death side effects)
+        private static Type _lootManagerType;
+        private static bool _lootManagerTypeResolved;
+
         // MonoMod Hook delegates — use int for enum params (same underlying type at IL level)
         private delegate void orig_GoToLevel(object self, int envId, int levelIndex, int loadingMode, string spawnId);
         private delegate void hook_GoToLevel(orig_GoToLevel orig, object self, int envId, int levelIndex, int loadingMode, string spawnId);
@@ -973,6 +977,42 @@ namespace SulfurMP.Level
             // SetTimeScale(0.5,2) caught by our hook and overridden to (1,0)
             Plugin.Log.LogInfo("LevelSync: PlayerDied intercepted — skipping death coroutine in MP");
 
+            // Replicate per-player death side effects (matches single-player PlayerDiedRoutine behavior)
+            // Order matters: save insured items FIRST, then clear inventory
+            try
+            {
+                // 1. Save insured items + death-gold to church stash
+                //    LootManager : StaticInstance<LootManager>, AddToChurchCollection() is public
+                var lootManagerType = FindLootManagerType();
+                if (lootManagerType != null)
+                {
+                    var lmInstanceProp = lootManagerType.GetProperty("Instance",
+                        BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+                    var lmInstance = lmInstanceProp?.GetValue(null);
+                    if (lmInstance != null && !(lmInstance is UnityEngine.Object uo && uo == null))
+                    {
+                        var addMethod = lootManagerType.GetMethod("AddToChurchCollection",
+                            BindingFlags.Public | BindingFlags.Instance);
+                        addMethod?.Invoke(lmInstance, null);
+                        Plugin.Log.LogInfo("LevelSync: Church collection saved on death");
+                    }
+                }
+
+                // 2. Clear inventory, resources, cached stats/buffs
+                //    GameManager.ClearPlayerInventoryAndResources() is private
+                var clearMethod = self.GetType().GetMethod("ClearPlayerInventoryAndResources",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                if (clearMethod != null)
+                {
+                    clearMethod.Invoke(self, null);
+                    Plugin.Log.LogInfo("LevelSync: Inventory cleared on death");
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"LevelSync: Failed to replicate death effects: {ex}");
+            }
+
             // Broadcast death to all peers
             var deathMsg = new PlayerDeathMessage
             {
@@ -1139,6 +1179,26 @@ namespace SulfurMP.Level
             {
                 Plugin.Log.LogError("LevelSync: Cannot transition to ChurchHub — no GameManager");
                 return;
+            }
+
+            // Clear run-tracking HashSets for fresh dungeon generation on next run
+            try
+            {
+                var gmType = gm.GetType();
+                foreach (var fieldName in new[] { "usedChunksThisRun", "usedUniqueEventThisRun", "usedUniqueEventThisEnvironment" })
+                {
+                    var field = gmType.GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+                    if (field != null)
+                    {
+                        var hashSet = field.GetValue(gm);
+                        hashSet?.GetType().GetMethod("Clear")?.Invoke(hashSet, null);
+                    }
+                }
+                Plugin.Log.LogInfo("LevelSync: Run tracking cleared for next dungeon generation");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"LevelSync: Failed to clear run tracking: {ex}");
             }
 
             // ChurchHub = WorldEnvironmentIds value 1, LoadingMode.Death = 2
@@ -2050,6 +2110,22 @@ namespace SulfurMP.Level
                 return instance;
             }
             catch { return null; }
+        }
+
+        private static Type FindLootManagerType()
+        {
+            if (_lootManagerTypeResolved) return _lootManagerType;
+            _lootManagerTypeResolved = true;
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    _lootManagerType = asm.GetType("PerfectRandom.Sulfur.Core.Items.LootManager");
+                    if (_lootManagerType != null) return _lootManagerType;
+                }
+                catch { }
+            }
+            return null;
         }
 
         private static void SetForceLevelSeed(long seed)

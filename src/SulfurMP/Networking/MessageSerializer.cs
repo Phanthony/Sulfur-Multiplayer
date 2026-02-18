@@ -125,6 +125,7 @@ namespace SulfurMP.Networking
             Register<ContainerLootedMessage>(MessageType.ContainerLooted);
             Register<ItemDropMessage>(MessageType.ItemDrop);
             Register<SharedGoldMessage>(MessageType.SharedGold);
+            Register<ChurchCollectionLootMessage>(MessageType.ChurchCollectionLoot);
 
             // World state sync (Phase 11)
             Register<WorldObjectStateMessage>(MessageType.InteractableState);

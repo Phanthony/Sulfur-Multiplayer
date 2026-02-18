@@ -15,6 +15,7 @@ namespace SulfurMP.UI
     public static class PauseMenuHook
     {
         private static Hook _onEnableHook;
+        private static Hook _resumeGameHook;
         private static bool _installed;
 
         // Track which pause menus we've already injected a button into
@@ -45,6 +46,28 @@ namespace SulfurMP.UI
 
                 _onEnableHook = new Hook(onEnableMethod,
                     new Action<Action<object>, object>(OnEnableHook));
+
+                // Hook GameManager.ResumeGame to intercept ESC while multiplayer panel is open
+                var gmType = FindType("PerfectRandom.Sulfur.Core.GameManager");
+                if (gmType != null)
+                {
+                    var resumeMethod = gmType.GetMethod("ResumeGame",
+                        BindingFlags.Public | BindingFlags.Instance);
+                    if (resumeMethod != null)
+                    {
+                        _resumeGameHook = new Hook(resumeMethod,
+                            new Action<Action<object>, object>(ResumeGameHook));
+                        Plugin.Log.LogInfo("PauseMenuHook: ResumeGame hook installed");
+                    }
+                    else
+                    {
+                        Plugin.Log.LogWarning("PauseMenuHook: Could not find GameManager.ResumeGame");
+                    }
+                }
+                else
+                {
+                    Plugin.Log.LogWarning("PauseMenuHook: Could not find GameManager type");
+                }
 
                 Plugin.Log.LogInfo("PauseMenuHook: Installed");
             }
@@ -145,6 +168,18 @@ namespace SulfurMP.UI
             }
 
             Plugin.Log.LogInfo("PauseMenuHook: Multiplayer button injected into pause menu");
+        }
+
+        private static void ResumeGameHook(Action<object> orig, object self)
+        {
+            var panel = MultiplayerPanel.Instance;
+            if (panel != null && panel.IsVisible)
+            {
+                // ESC pressed while multiplayer panel is open — close panel, keep game paused
+                panel.HandleEscapeFromGame();
+                return;
+            }
+            orig(self);
         }
 
         private static Type FindType(string fullName)

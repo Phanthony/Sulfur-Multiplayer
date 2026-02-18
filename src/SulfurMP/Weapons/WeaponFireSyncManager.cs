@@ -80,6 +80,8 @@ namespace SulfurMP.Weapons
         private static FieldInfo _lifeTimeField;            // Projectile.lifeTime (float)
         private static MethodInfo _restartLifetimeMethod;   // Projectile.RestartLifetime()
         private static MethodInfo _resetEffectsMethod;      // Projectile.ResetEffects()
+        private static FieldInfo _explicitDamageField;       // Projectile.explicitDamage (float) — ProcessHit checks this raw field
+        private static FieldInfo _damageComponentsField;     // Projectile.damageComponents (protected list) — stale from pool reuse
 
         // ProjectileTypes enum
         private static Type _projectileTypesEnum;
@@ -485,6 +487,11 @@ namespace SulfurMP.Weapons
                 _setOwnerMethod?.Invoke(projectile, new object[] { null });
                 _turnOffDamageMethod?.Invoke(projectile, null);
 
+                // Zero stale fields that ProcessHit checks directly (bypassing damageTurnedOff flag).
+                // Pool reuse leaves explicitDamage > 0 and damageComponents populated from previous use.
+                _explicitDamageField?.SetValue(projectile, 0f);
+                _damageComponentsField?.SetValue(projectile, null);
+
                 // Reset and enable trail renderers
                 _resetEffectsMethod?.Invoke(projectile, null);
                 if (_trailsField != null)
@@ -693,8 +700,15 @@ namespace SulfurMP.Weapons
                 _resetEffectsMethod = _projectileType.GetMethod("ResetEffects",
                     BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
 
+                _explicitDamageField = _projectileType.GetField("explicitDamage",
+                    BindingFlags.Public | BindingFlags.Instance);
+                _damageComponentsField = _projectileType.GetField("damageComponents",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+
                 if (_turnOffDamageMethod != null)
                     Plugin.Log.LogInfo("WeaponFireSync: Found Projectile methods (TurnOffDamage, SetOwner, RestartLifetime, ResetEffects)");
+                if (_explicitDamageField != null)
+                    Plugin.Log.LogInfo("WeaponFireSync: Found Projectile.explicitDamage + damageComponents fields");
             }
 
             // ProjectileTypes.Bullet enum value

@@ -72,6 +72,7 @@ namespace SulfurMP
             NetworkObject.AddComponent<ItemSyncManager>();
             NetworkObject.AddComponent<SpectatorManager>();
             NetworkObject.AddComponent<WorldStateSyncManager>();
+            NetworkObject.AddComponent<RoomLODSyncManager>();
             NetworkObject.AddComponent<WeaponFireSyncManager>();
             NetworkObject.AddComponent<LevelGenDeterminismManager>();
 
