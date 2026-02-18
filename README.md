@@ -1,17 +1,44 @@
-# SulfurMP Setup Guide
+# SulfurMP - Multiplayer Mod for SULFUR
 
-## Prerequisites
+## Installation
+
+1. Download the latest release from [GitHub Releases](https://github.com/Phanthony/Sulfur-Multiplayer/releases/)
+2. Extract the zip and drag the `BepInEx` folder into your SULFUR game directory
+   - Default location: `C:\Program Files (x86)\Steam\steamapps\common\SULFUR\`
+3. Launch the game
+
+Your SULFUR directory should look like this:
+
+```
+SULFUR/
+├── winhttp.dll
+├── doorstop_config.ini
+├── BepInEx/
+│   ├── core/
+│   ├── plugins/
+│   │   └── SulfurMP/
+│   │       └── SulfurMP.dll
+│   └── ...
+└── Sulfur_Data/
+```
+
+## In-Game Usage
+
+- **Pause menu** → "MULTIPLAYER" button to host, join, or browse lobbies
+- **F9** for debug overlay (network stats, peer list, message log)
+
+---
+
+## Building from Source
+
+For developers who want to build the mod themselves.
+
+### Prerequisites
 
 - **SULFUR** installed via Steam
-- **.NET SDK** (for building the mod)
+- **.NET SDK**
 
-## BepInEx 5 Installation
-
-1. Download **BepInEx 5.x (x64)** from [GitHub releases](https://github.com/BepInEx/BepInEx/releases)
-2. Extract into the SULFUR game directory — creates `BepInEx/`, `winhttp.dll`, `doorstop_config.ini`
-3. Run the game once to let BepInEx generate its folder structure
-
-## Building the Mod
+### Steps
 
 1. Copy `src/SulfurMP/GamePath.props.example` to `src/SulfurMP/GamePath.props`
 2. Edit `GamePath.props` — set `<SulfurDir>` to your SULFUR install path
@@ -22,27 +49,3 @@ dotnet build src/SulfurMP/SulfurMP.csproj
 ```
 
 Output auto-deploys to `<SulfurDir>\BepInEx\plugins\SulfurMP\SulfurMP.dll`.
-
-
-## File Structure
-
-After BepInEx is installed and the mod is built:
-
-```
-SULFUR/
-├── winhttp.dll              (BepInEx doorstop)
-├── doorstop_config.ini      (BepInEx config)
-├── BepInEx/
-│   ├── core/                (BepInEx runtime — auto-generated)
-│   ├── plugins/
-│   │   └── SulfurMP/
-│   │       └── SulfurMP.dll (the mod — placed by build)
-│   └── LogOutput.log        (debug log)
-└── Sulfur_Data/
-    └── Managed/             (game assemblies — referenced at build time)
-```
-
-## In-Game Usage
-
-- **Pause menu** → "MULTIPLAYER" button to host, join, or browse lobbies
-- **F9** for debug overlay (network stats, peer list, message log)
