@@ -16,7 +16,7 @@
 
 1. Download the latest release from [GitHub Releases](https://github.com/Phanthony/Sulfur-Multiplayer/releases/)
 2. Extract the zip and drag the `BepInEx` folder into your SULFUR game directory
-   - Default location: `C:\Program Files (x86)\Steam\steamapps\common\SULFUR\`
+   - Default location: `\Steam\steamapps\common\SULFUR\`
 3. Launch the game
 
 Your SULFUR directory should look like this:
